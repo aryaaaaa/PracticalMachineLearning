@@ -1,0 +1,78 @@
+---
+title: "PML_CourseProject"
+output: html_document
+---
+
+# Practical Machine Learning - Course Project
+## Arya Viswanathan
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The 5 possible ways are:
+Class A: exactly according to the specification
+Class B: throwing the elbows to the front
+Class C: lifting the dumbbell only halfway
+Class D: lowering the dumbbell only halfway
+Class E: throwing the hips to the front
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz4ObXR5o9q
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har.
+
+```{r}
+library(caret)
+library(rattle)
+library(randomForest)
+```
+
+# Data Cleaning/Splitting
+```{r}
+# Load the datasets
+training <- read.csv(file="pml-training.csv",header=TRUE,na.strings=c("NA",""))
+testing <- read.csv(file="pml-testing.csv",header=TRUE,na.strings=c("NA",""))
+
+# Remove columns with NA values
+training <- training[,colSums(is.na(training))==0]
+testing <- testing[,colSums(is.na(testing))==0]
+
+# Remove the first 6 variables since they aren't relevant in predicting the outcome of classe.
+training <- training[,-(1:6)]
+testing <- testing[,-(1:6)]
+
+# In order to estimate out-of-sample error, we must split the training set into 2 sets: 1) a smaller training set and 2) a validation set.
+set.seed(777)
+train_partition <- createDataPartition(training$classe,p=0.7,list=FALSE)
+training_1 <- training[train_partition,]
+training_2 <- training[-train_partition,]
+
+# Remove variables with nearly zero variance
+nzv <- nearZeroVar(training_1, saveMetrics=TRUE)
+training_1 <- training_1[,nzv$nzv==FALSE]
+nzv<- nearZeroVar(training_2,saveMetrics=TRUE)
+training_2 <- training_2[,nzv$nzv==FALSE]
+```
+
+# Building Prediction Models
+Let's start with decision trees to predict the outcome. Fit model on training_1 and use 3-fold cross-validation.
+```{r}
+control <- trainControl(method = "cv",number = 3)
+rpart_model <- train(classe ~ ., data=training_1, method='rpart', trControl=control)
+print(rpart_model)
+# Use fitted model to predict classe variable in validation set
+predict_rpart <- predict(rpart_model,training_2)
+confusionMatrix(training_2$classe,predict_rpart)
+```
+The accuracy is about 58%, which means that the estimated out-of-sample error is about 42%. This does not predict classe well.
+
+Next let's try a Random Forest model to see if this method predicts the outcome more accurately. Fit model on training_1 and use 3-fold cross-validation.
+```{r}
+rf_model <- train(classe ~ ., data=training_1, method="rf", trControl=control)
+print(rf_model)
+# Use fitted model to predict classe variable in validation set
+predict_rf <- predict(rf_model,training_2)
+confusionMatrix(training_2$classe,predict_rf)
+```
+The accuracy is about 99.85%, which means that the estimated out-of-sample error is about 0.15%. We can see that the random forest method is significantly better than the decision tree method.
+
+# Predicting on the Testing Set
+Use random forests to predict a classe for each of the 20 observations in the testing set.
+```{r}
+predict(rf_model,testing)
+```
